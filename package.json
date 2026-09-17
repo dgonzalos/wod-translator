@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "pnpm -r --parallel dev",
     "build": "pnpm -r build",
+    "pretest": "pnpm --filter @wod-translator/shared build",
     "test": "pnpm -r test",
+    "pretypecheck": "pnpm --filter @wod-translator/shared build",
     "typecheck": "pnpm -r typecheck"
   }
 }

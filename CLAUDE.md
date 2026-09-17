@@ -4,9 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-This repository currently contains only the spec document `WOD_Translator_MVP_Portfolio.md` — no code has been scaffolded yet. There is no package.json, no build/test tooling, and nothing to lint or run. Once scaffolding exists, this file should be updated with the actual commands (install, dev, build, lint, test, typecheck, single-test invocation) — do not invent commands before they exist.
+Phase 1 is complete: the pnpm workspace is scaffolded with `packages/shared`, `packages/web`, and `packages/api`, the Zod data contracts live in `packages/shared`, and the three precomputed demo WODs are in `packages/shared/src/examples`. There is no real `/api/parse` or `/api/adapt` logic yet, and `packages/web` has no real UI screens yet — those land in later phases. There is no lint tooling yet.
 
-Until scaffolding lands, treat `WOD_Translator_MVP_Portfolio.md` as the single source of truth for scope and design decisions; the summary below is a distillation of it, not a replacement.
+Commands (run from the repo root):
+- Install: `pnpm install`
+- Build (run before typecheck/test on a fresh clone — `packages/shared` must produce `dist/` first): `pnpm -r build`
+- Typecheck: `pnpm -r typecheck`
+- Test: `pnpm -r test`
+- Dev (all packages in parallel): `pnpm dev`
+- Single package: `pnpm --filter @wod-translator/<shared|web|api> <script>`
+
+Treat `WOD_Translator_MVP_Portfolio.md` as the single source of truth for scope and design decisions; the summary below is a distillation of it, not a replacement.
 
 ## What this project is
 
