@@ -1,0 +1,30 @@
+.status {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  border: 1px solid transparent;
+  font-size: var(--font-size-sm);
+}
+
+.info {
+  background-color: var(--color-bg-canvas);
+  border-color: var(--color-border-default);
+  color: var(--color-text-secondary);
+}
+
+.warning {
+  background-color: var(--color-warning-bg);
+  border-color: var(--color-warning-border);
+  color: var(--color-warning-text);
+}
+
+.error {
+  background-color: var(--color-danger-bg);
+  border-color: var(--color-danger-border);
+  color: var(--color-danger-text);
+}
+
+.success {
+  background-color: var(--color-success-bg);
+  border-color: var(--color-success-border);
+  color: var(--color-success-text);
+}

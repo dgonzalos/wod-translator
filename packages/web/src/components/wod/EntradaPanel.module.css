@@ -1,0 +1,26 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.heading {
+  font-size: var(--font-size-lg);
+}
+
+.overLimit {
+  color: var(--color-danger-text);
+  font-weight: var(--font-weight-semibold);
+}
+
+.examples {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.examplesLabel {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}

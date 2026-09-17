@@ -1,6 +1,25 @@
 .app {
-  font-family: system-ui, sans-serif;
-  max-width: 40rem;
+  max-width: 75rem;
   margin: 0 auto;
-  padding: 2rem;
+  padding: var(--space-6) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.title {
+  font-size: var(--font-size-xl);
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-6);
+}
+
+@media (min-width: 900px) {
+  .columns {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
 }
