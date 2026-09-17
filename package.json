@@ -1,0 +1,12 @@
+{
+  "name": "wod-translator",
+  "private": true,
+  "packageManager": "pnpm@11.25.0",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck"
+  }
+}
