@@ -14,6 +14,7 @@ const STATE_LABELS: Record<AppState, string> = {
   interpretando: 'Interpretando…',
   revision_necesaria: 'Revisión necesaria: hay dudas o campos inválidos pendientes.',
   listo: 'Listo. La ficha está revisada.',
+  adaptando: 'Adaptando…',
   error: 'No se pudo interpretar el WOD.',
 };
 
@@ -22,6 +23,7 @@ const STATE_TONES: Record<AppState, 'info' | 'warning' | 'error' | 'success'> = 
   interpretando: 'info',
   revision_necesaria: 'warning',
   listo: 'success',
+  adaptando: 'info',
   error: 'error',
 };
 

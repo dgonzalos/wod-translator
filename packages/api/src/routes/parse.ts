@@ -1,15 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { ParseRequestSchema, type ApiErrorCode } from '@wod-translator/shared';
+import { ParseRequestSchema } from '@wod-translator/shared';
 import type { InterpretationService } from '../ai/interpret.service.js';
-
-const ERROR_STATUS: Record<ApiErrorCode, number> = {
-  INVALID_INPUT: 400,
-  UNSUPPORTED_FORMAT: 422,
-  RATE_LIMITED: 429,
-  PROVIDER_ERROR: 502,
-  TIMEOUT: 504,
-};
+import { ERROR_STATUS } from './error-status.js';
 
 export function registerParseRoute(app: FastifyInstance, service: InterpretationService) {
   app.post('/api/parse', async (request, reply) => {

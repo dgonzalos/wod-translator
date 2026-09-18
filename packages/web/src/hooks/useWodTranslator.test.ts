@@ -3,12 +3,26 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CURRENT_WOD_SCHEMA_VERSION, EXAMPLE_WODS, type Wod } from '@wod-translator/shared';
 import { useWodTranslator } from './useWodTranslator';
 import { parseWod } from '../api/parseWod';
+import { adaptWod } from '../api/adaptWod';
 
 vi.mock('../api/parseWod', () => ({
   parseWod: vi.fn(),
 }));
 
+vi.mock('../api/adaptWod', () => ({
+  adaptWod: vi.fn(),
+}));
+
 const mockedMockParse = vi.mocked(parseWod);
+const mockedAdaptWod = vi.mocked(adaptWod);
+
+const acceptedProposal = {
+  movementId: 'movement-1',
+  substitute: 'Sentadilla con mancuernas',
+  requiredEquipment: ['Mancuernas'],
+  reason: 'No hay barra disponible.',
+  caveats: null,
+};
 
 const cardWithIssue: Wod = {
   schemaVersion: CURRENT_WOD_SCHEMA_VERSION,
@@ -30,6 +44,8 @@ const cardWithIssue: Wod = {
   issues: [{ field: 'movements[0].quantity', message: 'Revisa esta cantidad.' }],
 };
 
+const cleanCard: Wod = { ...cardWithIssue, issues: [] };
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((res) => {
@@ -41,6 +57,8 @@ function deferred<T>() {
 describe('useWodTranslator', () => {
   beforeEach(() => {
     mockedMockParse.mockReset();
+    mockedAdaptWod.mockReset();
+    localStorage.clear();
   });
 
   it('starts in the inicial state', () => {
@@ -174,5 +192,105 @@ describe('useWodTranslator', () => {
     });
 
     expect(result.current.card?.movements[0].name).toBe('Edited during interpret');
+  });
+
+  it('adapt() populates proposals when the card is listo', async () => {
+    mockedMockParse.mockResolvedValue({ ok: true, requestId: 'req-1', card: cleanCard });
+    mockedAdaptWod.mockResolvedValue({ ok: true, requestId: 'req-2', proposals: [acceptedProposal] });
+
+    const { result } = renderHook(() => useWodTranslator());
+    act(() => {
+      result.current.setText('AMRAP 10min: 10 burpees');
+    });
+    await act(async () => {
+      await result.current.interpret();
+    });
+    expect(result.current.appState).toBe('listo');
+
+    await act(async () => {
+      await result.current.adapt();
+    });
+
+    expect(result.current.proposals).toEqual([acceptedProposal]);
+    expect(result.current.acceptedProposals).toEqual([]);
+  });
+
+  it('toggleProposalAccepted moves a proposal into acceptedProposals', async () => {
+    mockedMockParse.mockResolvedValue({ ok: true, requestId: 'req-1', card: cleanCard });
+    mockedAdaptWod.mockResolvedValue({ ok: true, requestId: 'req-2', proposals: [acceptedProposal] });
+
+    const { result } = renderHook(() => useWodTranslator());
+    act(() => {
+      result.current.setText('AMRAP 10min: 10 burpees');
+    });
+    await act(async () => {
+      await result.current.interpret();
+    });
+    await act(async () => {
+      await result.current.adapt();
+    });
+
+    act(() => {
+      result.current.toggleProposalAccepted(acceptedProposal);
+    });
+
+    expect(result.current.acceptedProposals).toEqual([acceptedProposal]);
+  });
+
+  it('editing the card after adapting discards the previous proposals', async () => {
+    mockedMockParse.mockResolvedValue({ ok: true, requestId: 'req-1', card: cleanCard });
+    mockedAdaptWod.mockResolvedValue({ ok: true, requestId: 'req-2', proposals: [acceptedProposal] });
+
+    const { result } = renderHook(() => useWodTranslator());
+    act(() => {
+      result.current.setText('AMRAP 10min: 10 burpees');
+    });
+    await act(async () => {
+      await result.current.interpret();
+    });
+    await act(async () => {
+      await result.current.adapt();
+    });
+    act(() => {
+      result.current.toggleProposalAccepted(acceptedProposal);
+    });
+    expect(result.current.proposals).toHaveLength(1);
+
+    act(() => {
+      result.current.updateMovementField('movement-1', { name: 'Edited after adapt' });
+    });
+
+    expect(result.current.proposals).toEqual([]);
+    expect(result.current.acceptedProposals).toEqual([]);
+  });
+
+  it('discards a superseded in-flight adapt response', async () => {
+    mockedMockParse.mockResolvedValue({ ok: true, requestId: 'req-1', card: cleanCard });
+    const { result } = renderHook(() => useWodTranslator());
+    act(() => {
+      result.current.setText('AMRAP 10min: 10 burpees');
+    });
+    await act(async () => {
+      await result.current.interpret();
+    });
+
+    const first = deferred<Awaited<ReturnType<typeof adaptWod>>>();
+    mockedAdaptWod.mockReturnValueOnce(first.promise);
+    let adaptPromise!: Promise<void>;
+    act(() => {
+      adaptPromise = result.current.adapt();
+    });
+
+    // A card edit while the adapt request is in flight supersedes it.
+    act(() => {
+      result.current.updateMovementField('movement-1', { name: 'Edited during adapt' });
+    });
+
+    await act(async () => {
+      first.resolve({ ok: true, requestId: 'req-2', proposals: [acceptedProposal] });
+      await adaptPromise;
+    });
+
+    expect(result.current.proposals).toEqual([]);
   });
 });

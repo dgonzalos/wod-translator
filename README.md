@@ -13,10 +13,10 @@ Built in phases, in this order (see `CLAUDE.md` for the full build order rationa
 - [x] **Phase 1 — Skeleton & contracts.** pnpm workspace, Zod data contracts (`packages/shared`), three precomputed example WODs that work with zero AI calls.
 - [x] **Phase 2 — Full UI on mocked data.** All review/edit screens, the interpret/edit/stale-invalidation state machine, wired to a mock interpreter.
 - [x] **Phase 3 — Real interpretation backend.** `POST /api/parse` calls Anthropic for real, validates the response against the same schema the UI trusts, and maps every failure mode (unsupported format, timeout, provider error) to a typed error the frontend already understands.
-- [ ] **Phase 4 — Adaptation, copy, local save.** `POST /api/adapt` (equipment substitution proposals), the accept/reject UI, copy-to-clipboard, and localStorage persistence of the last WOD. *Not started.*
+- [x] **Phase 4 — Adaptation, copy, local save.** `POST /api/adapt` proposes equipment substitutions from a small fixed catalog (never auto-applied — each is accepted/rejected in the UI), plus copy-to-clipboard (with a manual-selection fallback) and localStorage save/restore of the last WOD, with corrupt/incompatible saves reset automatically.
 - [ ] **Phase 5 — Limits, tests, deploy.** Per-IP/global rate limiting, trusted-proxy config, the 10-case manual model evaluation, and an actual deployment. *Not started.*
 
-Until Phase 5 lands, there is no rate limiting on `/api/parse` — don't point a public deployment at it with a real API key.
+Until Phase 5 lands, there is no rate limiting on `/api/parse` or `/api/adapt` — don't point a public deployment at either with a real API key.
 
 ## What it does (today)
 
@@ -24,6 +24,8 @@ Until Phase 5 lands, there is no rate limiting on `/api/parse` — don't point a
 - The backend sends your text to Claude, asks it to extract only what's explicitly present (never inventing quantities, units, or loads), and to flag anything ambiguous or unsupported instead of guessing.
 - Only a single AMRAP or For Time block is supported; anything else (EMOM, multiple blocks, rep ladders, %1RM) is reported as unsupported and your original text is preserved untouched for editing.
 - The resulting card is fully editable, and editing the original text invalidates the card until you re-interpret it.
+- Once the card is fully reviewed, declare your available equipment and ask for substitution proposals; each one is shown with its reason and caveats and only takes effect if you explicitly accept it. Editing the card afterwards discards the proposals, since they no longer apply.
+- Copy a plain-text summary of the reviewed (and optionally adapted) WOD, or save the single most recent one in this browser to pick up again after a reload.
 
 ## Stack
 
@@ -84,7 +86,7 @@ All automated tests run against a fake/injected AI client — no API key or netw
 
 ## Known limitations (current)
 
-- No adaptation, copy, or local save yet — the flow stops at the reviewed card.
 - No rate limiting or spend controls — do not deploy this publicly with a real key configured.
 - No deployment, screenshots, or demo exist yet.
 - Real-model accuracy is unverified; only schema-shape and error-path behavior are covered by automated tests so far.
+- The equipment-substitution catalog is a small fixed list (see `packages/shared/src/equipment-catalog.ts`), not a general equipment vocabulary.

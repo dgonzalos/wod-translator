@@ -5,7 +5,10 @@ import cors from '@fastify/cors';
 import Anthropic from '@anthropic-ai/sdk';
 import { registerHealthRoute } from './routes/health.js';
 import { registerParseRoute } from './routes/parse.js';
-import { InterpretationService, type CreateMessage } from './ai/interpret.service.js';
+import { registerAdaptRoute } from './routes/adapt.js';
+import { InterpretationService } from './ai/interpret.service.js';
+import { AdaptationService } from './ai/adapt.service.js';
+import type { CreateMessage } from './ai/anthropic-client.js';
 
 function readPort(): number {
   const raw = process.env.PORT;
@@ -66,8 +69,11 @@ export function buildApp(deps: BuildAppDeps = {}) {
   // PROVIDER_ERROR — so a misconfigured server degrades per-request instead
   // of refusing to start (keeps `pnpm dev`/tests usable with no .env).
   const model = process.env.ANTHROPIC_MODEL ?? '';
-  const interpretationService = new InterpretationService(createMessage, model, readTimeoutMs());
+  const timeoutMs = readTimeoutMs();
+  const interpretationService = new InterpretationService(createMessage, model, timeoutMs);
   registerParseRoute(app, interpretationService);
+  const adaptationService = new AdaptationService(createMessage, model, timeoutMs);
+  registerAdaptRoute(app, adaptationService);
 
   return app;
 }

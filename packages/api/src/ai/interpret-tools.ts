@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { WodObjectSchema } from '@wod-translator/shared';
+import { toToolInputSchema } from './zod-tool-schema.js';
 
 export const REPORT_INTERPRETATION_TOOL = 'report_wod_interpretation';
 export const REPORT_UNSUPPORTED_FORMAT_TOOL = 'report_unsupported_format';
@@ -17,20 +18,6 @@ export const UnsupportedFormatInputSchema = z.object({
 });
 export type UnsupportedFormatInput = z.infer<typeof UnsupportedFormatInputSchema>;
 
-function toToolInputSchema(schema: z.ZodTypeAny): Anthropic.Tool['input_schema'] {
-  const jsonSchema = z.toJSONSchema(schema, { unrepresentable: 'any' }) as Record<string, unknown>;
-  delete jsonSchema.$schema;
-  return jsonSchema as Anthropic.Tool['input_schema'];
-}
-
-/**
- * Zod's built-in toJSONSchema can't encode WodSchema's `.superRefine`
- * cross-field invariants (format-specific nulls, unique movement ids) — the
- * model won't see them as constraints. The route re-validates with the real
- * WodSchema after the call, so a violation here is a wasted-retry risk, not
- * a safety gap (same caveat as ticketing-system's admin-tools.ts, which hits
- * the equivalent limitation with the third-party zod-to-json-schema package).
- */
 export function buildInterpretTools(): Anthropic.Tool[] {
   return [
     {

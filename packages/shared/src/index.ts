@@ -1,4 +1,5 @@
 export * from './units.js';
+export * from './equipment-catalog.js';
 export * from './wod.schema.js';
 export * from './adaptation.schema.js';
 export * from './api.schema.js';

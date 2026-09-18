@@ -11,10 +11,3 @@ describe('GET /api/health', () => {
   });
 });
 
-describe('unregistered AI routes', () => {
-  it('POST /api/adapt is not registered this phase', async () => {
-    const app = buildApp();
-    const response = await app.inject({ method: 'POST', url: '/api/adapt' });
-    expect(response.statusCode).toBe(404);
-  });
-});
