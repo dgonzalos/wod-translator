@@ -33,47 +33,51 @@ export const IssueSchema = z.object({
 });
 export type Issue = z.infer<typeof IssueSchema>;
 
-export const WodSchema = z
-  .object({
-    schemaVersion: z.number().int().positive(),
-    format: z.enum(['amrap', 'for_time']),
-    durationSeconds: z.number().int().positive().max(3600).nullable(),
-    rounds: z.number().int().positive().max(1000).nullable(),
-    timeCapSeconds: z.number().int().positive().max(7200).nullable(),
-    movements: z.array(MovementSchema).min(1).max(10),
-    explanations: z.array(ExplanationSchema).max(20),
-    issues: z.array(IssueSchema).max(20),
-  })
-  .superRefine((wod, ctx) => {
-    // durationSeconds is an AMRAP-only concept; rounds/timeCapSeconds are
-    // For Time-only (spec §7) — a card mixing both shapes is contradictory.
-    if (wod.format === 'amrap') {
-      if (wod.rounds !== null) {
-        ctx.addIssue({ code: 'custom', path: ['rounds'], message: 'rounds only applies to for_time workouts' });
-      }
-      if (wod.timeCapSeconds !== null) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['timeCapSeconds'],
-          message: 'timeCapSeconds only applies to for_time workouts',
-        });
-      }
-    } else if (wod.format === 'for_time' && wod.durationSeconds !== null) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['durationSeconds'],
-        message: 'durationSeconds only applies to amrap workouts',
-      });
-    }
+// Exported separately (pre-superRefine) so callers that need object-only
+// methods like `.omit()` — e.g. building an AI tool input schema without
+// `schemaVersion` — have a ZodObject to call them on; `.superRefine()` below
+// wraps it in a ZodEffects, which doesn't expose those methods.
+export const WodObjectSchema = z.object({
+  schemaVersion: z.number().int().positive(),
+  format: z.enum(['amrap', 'for_time']),
+  durationSeconds: z.number().int().positive().max(3600).nullable(),
+  rounds: z.number().int().positive().max(1000).nullable(),
+  timeCapSeconds: z.number().int().positive().max(7200).nullable(),
+  movements: z.array(MovementSchema).min(1).max(10),
+  explanations: z.array(ExplanationSchema).max(20),
+  issues: z.array(IssueSchema).max(20),
+});
 
-    const ids = wod.movements.map((movement) => movement.id);
-    const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
-    if (duplicates.length > 0) {
+export const WodSchema = WodObjectSchema.superRefine((wod, ctx) => {
+  // durationSeconds is an AMRAP-only concept; rounds/timeCapSeconds are
+  // For Time-only (spec §7) — a card mixing both shapes is contradictory.
+  if (wod.format === 'amrap') {
+    if (wod.rounds !== null) {
+      ctx.addIssue({ code: 'custom', path: ['rounds'], message: 'rounds only applies to for_time workouts' });
+    }
+    if (wod.timeCapSeconds !== null) {
       ctx.addIssue({
         code: 'custom',
-        path: ['movements'],
-        message: `movement ids must be unique; duplicated: ${[...new Set(duplicates)].join(', ')}`,
+        path: ['timeCapSeconds'],
+        message: 'timeCapSeconds only applies to for_time workouts',
       });
     }
-  });
+  } else if (wod.format === 'for_time' && wod.durationSeconds !== null) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['durationSeconds'],
+      message: 'durationSeconds only applies to amrap workouts',
+    });
+  }
+
+  const ids = wod.movements.map((movement) => movement.id);
+  const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
+  if (duplicates.length > 0) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['movements'],
+      message: `movement ids must be unique; duplicated: ${[...new Set(duplicates)].join(', ')}`,
+    });
+  }
+});
 export type Wod = z.infer<typeof WodSchema>;

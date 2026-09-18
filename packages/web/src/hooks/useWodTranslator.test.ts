@@ -2,13 +2,13 @@ import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CURRENT_WOD_SCHEMA_VERSION, EXAMPLE_WODS, type Wod } from '@wod-translator/shared';
 import { useWodTranslator } from './useWodTranslator';
-import { mockParse } from '../mocks/mockParse';
+import { parseWod } from '../api/parseWod';
 
-vi.mock('../mocks/mockParse', () => ({
-  mockParse: vi.fn(),
+vi.mock('../api/parseWod', () => ({
+  parseWod: vi.fn(),
 }));
 
-const mockedMockParse = vi.mocked(mockParse);
+const mockedMockParse = vi.mocked(parseWod);
 
 const cardWithIssue: Wod = {
   schemaVersion: CURRENT_WOD_SCHEMA_VERSION,
@@ -49,7 +49,7 @@ describe('useWodTranslator', () => {
     expect(result.current.card).toBeNull();
   });
 
-  it('loadExample sets the card without calling mockParse', () => {
+  it('loadExample sets the card without calling parseWod', () => {
     const { result } = renderHook(() => useWodTranslator());
     act(() => {
       result.current.loadExample(EXAMPLE_WODS[0]);
@@ -114,7 +114,7 @@ describe('useWodTranslator', () => {
   });
 
   it('discards a superseded interpret response instead of overwriting newer state', async () => {
-    const first = deferred<Awaited<ReturnType<typeof mockParse>>>();
+    const first = deferred<Awaited<ReturnType<typeof parseWod>>>();
     mockedMockParse.mockReturnValueOnce(first.promise);
 
     const { result } = renderHook(() => useWodTranslator());
@@ -154,7 +154,7 @@ describe('useWodTranslator', () => {
     });
 
     // Re-interpret the same text (e.g. the user clicks "Interpretar" again).
-    const second = deferred<Awaited<ReturnType<typeof mockParse>>>();
+    const second = deferred<Awaited<ReturnType<typeof parseWod>>>();
     mockedMockParse.mockReturnValueOnce(second.promise);
     let secondInterpretPromise!: Promise<void>;
     act(() => {

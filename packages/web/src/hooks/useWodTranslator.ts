@@ -8,7 +8,7 @@ import {
   type Movement,
   type Wod,
 } from '@wod-translator/shared';
-import { mockParse } from '../mocks/mockParse';
+import { parseWod } from '../api/parseWod';
 import { describeFirstIssue, describeIssue } from '../utils/validationMessages';
 import { fieldErrorKey, issueKey } from '../utils/fieldPath';
 
@@ -101,7 +101,7 @@ export function useWodTranslator() {
 
     let outcome;
     try {
-      outcome = await mockParse(parsedRequest.data.text, controller.signal);
+      outcome = await parseWod(parsedRequest.data.text, controller.signal);
     } catch {
       return; // aborted by a superseding action — that action already owns state
     }

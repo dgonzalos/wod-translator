@@ -3,13 +3,13 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { EXAMPLE_WODS } from '@wod-translator/shared';
 import { App } from './App';
-import { mockParse } from './mocks/mockParse';
+import { parseWod } from './api/parseWod';
 
-vi.mock('./mocks/mockParse', () => ({
-  mockParse: vi.fn(),
+vi.mock('./api/parseWod', () => ({
+  parseWod: vi.fn(),
 }));
 
-const mockedMockParse = vi.mocked(mockParse);
+const mockedMockParse = vi.mocked(parseWod);
 
 describe('App', () => {
   beforeEach(() => {
