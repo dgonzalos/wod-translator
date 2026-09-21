@@ -4,6 +4,8 @@ import { AdaptationProposalSchema, CURRENT_WOD_SCHEMA_VERSION, type Wod } from '
 import { buildApp } from '../index.js';
 import type { CreateMessage } from '../ai/anthropic-client.js';
 import { REPORT_ADAPTATION_PROPOSALS_TOOL } from '../ai/adapt-tools.js';
+import { REPORT_INTERPRETATION_TOOL } from '../ai/interpret-tools.js';
+import { QuotaManager } from '../rate-limit/quota.js';
 
 function fakeMessage(content: Anthropic.ContentBlock[]): Anthropic.Message {
   return { content } as unknown as Anthropic.Message;
@@ -92,5 +94,61 @@ describe('POST /api/adapt', () => {
 
     expect(response.statusCode).toBe(502);
     expect(response.json().code).toBe('PROVIDER_ERROR');
+  });
+
+  it('shares its rate-limit quota with /api/parse for the same IP', async () => {
+    const validInterpretationInput = {
+      format: 'amrap' as const,
+      durationSeconds: 720,
+      rounds: null,
+      timeCapSeconds: null,
+      movements: [
+        {
+          id: 'movement-1',
+          name: 'Burpees',
+          quantity: 15,
+          unit: 'reps' as const,
+          loads: null,
+          originalTextSnippet: '15 burpees',
+        },
+      ],
+      explanations: [],
+      issues: [],
+    };
+    const createMessage: CreateMessage = async (params) => {
+      const toolName = params.tools?.[0]?.name;
+      if (toolName === REPORT_INTERPRETATION_TOOL) {
+        return fakeMessage([toolUseBlock(REPORT_INTERPRETATION_TOOL, validInterpretationInput)]);
+      }
+      return fakeMessage([toolUseBlock(REPORT_ADAPTATION_PROPOSALS_TOOL, { proposals: [validProposal] })]);
+    };
+    const quota = new QuotaManager({ perIpPerHour: 2, globalMaxConcurrency: 5, globalRequestsPerMinute: 1000, globalTokenBudget: null });
+    const app = buildApp({ createMessage, quota });
+
+    const parseResponse = await app.inject({
+      method: 'POST',
+      url: '/api/parse',
+      payload: { text: 'AMRAP 12min: 15 burpees' },
+      remoteAddress: '9.9.9.5',
+    });
+    expect(parseResponse.statusCode).toBe(200);
+
+    const adaptResponse = await app.inject({
+      method: 'POST',
+      url: '/api/adapt',
+      payload: { card, equipment },
+      remoteAddress: '9.9.9.5',
+    });
+    expect(adaptResponse.statusCode).toBe(200);
+
+    // Third AI-calling request from the same IP within the hour — quota of 2 is now exhausted.
+    const thirdResponse = await app.inject({
+      method: 'POST',
+      url: '/api/adapt',
+      payload: { card, equipment },
+      remoteAddress: '9.9.9.5',
+    });
+    expect(thirdResponse.statusCode).toBe(429);
+    expect(thirdResponse.json().code).toBe('RATE_LIMITED');
   });
 });

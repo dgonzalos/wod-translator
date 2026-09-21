@@ -1,13 +1,13 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { APIConnectionTimeoutError } from '@anthropic-ai/sdk';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { CURRENT_WOD_SCHEMA_VERSION, type Wod } from '@wod-translator/shared';
 import type { CreateMessage } from './anthropic-client.js';
 import { AdaptationService } from './adapt.service.js';
 import { REPORT_ADAPTATION_PROPOSALS_TOOL } from './adapt-tools.js';
 
-function fakeMessage(content: Anthropic.ContentBlock[]): Anthropic.Message {
-  return { content } as unknown as Anthropic.Message;
+function fakeMessage(content: Anthropic.ContentBlock[], usage?: Anthropic.Usage): Anthropic.Message {
+  return { content, usage } as unknown as Anthropic.Message;
 }
 
 function toolUseBlock(name: string, input: unknown): Anthropic.ContentBlock {
@@ -110,5 +110,23 @@ describe('AdaptationService', () => {
 
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) expect(outcome.error.code).toBe('PROVIDER_ERROR');
+  });
+
+  it('reports token usage and logs a result without leaking the card or equipment', async () => {
+    const usage = { input_tokens: 77, output_tokens: 33 } as unknown as Anthropic.Usage;
+    const createMessage: CreateMessage = async () =>
+      fakeMessage([toolUseBlock(REPORT_ADAPTATION_PROPOSALS_TOOL, { proposals: [validProposal] })], usage);
+    const logger = { info: vi.fn() };
+
+    const outcome = await service(createMessage).adapt(card, equipment, 'req-1', logger);
+
+    expect(outcome.ok).toBe(true);
+    expect(outcome.usage).toEqual({ inputTokens: 77, outputTokens: 33 });
+    expect(logger.info).toHaveBeenCalledTimes(1);
+    const [loggedObject] = logger.info.mock.calls[0]!;
+    expect((loggedObject as { result: string }).result).toBe('success');
+    const loggedPayload = JSON.stringify(loggedObject);
+    expect(loggedPayload).not.toContain('Thrusters');
+    expect(loggedPayload).not.toContain('Mancuernas');
   });
 });

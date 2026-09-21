@@ -172,6 +172,8 @@ export function AdaptacionPanel({
         )}
       </fieldset>
 
+      <p className={styles.hint}>Adaptar también envía la ficha y el material declarado a la IA.</p>
+
       <Button onClick={onAdapt} isLoading={adaptPhase === 'loading'} disabled={!canAdapt} fullWidth>
         Adaptar
       </Button>

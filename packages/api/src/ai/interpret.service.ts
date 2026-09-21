@@ -10,10 +10,14 @@ import {
   WodInterpretationInputSchema,
   buildInterpretTools,
 } from './interpret-tools.js';
+import { noopLogger, usageOf, type AiUsage, type InfoLogger } from './usage-logging.js';
 
 export type { CreateMessage };
 
-export type InterpretOutcome = { ok: true; card: Wod } | { ok: false; error: ApiError };
+export type InterpretOutcome = (
+  | { ok: true; card: Wod }
+  | { ok: false; error: ApiError }
+) & { usage?: AiUsage };
 
 const MAX_OUTPUT_TOKENS = 4096;
 
@@ -40,7 +44,24 @@ export class InterpretationService {
     private readonly timeoutMs: number,
   ) {}
 
-  async interpret(text: string, requestId: string): Promise<InterpretOutcome> {
+  async interpret(text: string, requestId: string, logger: InfoLogger = noopLogger): Promise<InterpretOutcome> {
+    const startedAt = Date.now();
+    // Never logs `text` or the resulting card — only counts/codes (spec §10 privacy requirement).
+    function finish(outcome: InterpretOutcome, response?: Anthropic.Message): InterpretOutcome {
+      const usage = response ? usageOf(response) : undefined;
+      logger.info(
+        {
+          operation: 'interpret',
+          requestId,
+          latencyMs: Date.now() - startedAt,
+          result: outcome.ok ? 'success' : outcome.error.code,
+          usage,
+        },
+        'ai_request',
+      );
+      return usage ? { ...outcome, usage } : outcome;
+    }
+
     let response: Anthropic.Message;
     try {
       response = await this.createMessage(
@@ -56,16 +77,16 @@ export class InterpretationService {
       );
     } catch (error) {
       if (error instanceof APIConnectionTimeoutError) {
-        return { ok: false, error: timeoutError(requestId) };
+        return finish({ ok: false, error: timeoutError(requestId) });
       }
-      return { ok: false, error: providerError(requestId) };
+      return finish({ ok: false, error: providerError(requestId) });
     }
 
     const toolUse = response.content.find(
       (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use',
     );
     if (!toolUse) {
-      return { ok: false, error: providerError(requestId) };
+      return finish({ ok: false, error: providerError(requestId) }, response);
     }
 
     if (toolUse.name === REPORT_UNSUPPORTED_FORMAT_TOOL) {
@@ -74,22 +95,28 @@ export class InterpretationService {
       console.info(`InterpretationService: unsupported format (requestId=${requestId})`, {
         reason: parsedReason.success ? parsedReason.data.reason : undefined,
       });
-      return { ok: false, error: unsupportedFormatError(requestId) };
+      return finish({ ok: false, error: unsupportedFormatError(requestId) }, response);
     }
 
     if (toolUse.name === REPORT_INTERPRETATION_TOOL) {
       const parsedInput = WodInterpretationInputSchema.safeParse(toolUse.input);
       if (!parsedInput.success) {
-        return { ok: false, error: providerError(requestId, 'La respuesta de la IA no superó la validación.') };
+        return finish(
+          { ok: false, error: providerError(requestId, 'La respuesta de la IA no superó la validación.') },
+          response,
+        );
       }
       const candidate = { schemaVersion: CURRENT_WOD_SCHEMA_VERSION, ...parsedInput.data };
       const parsedCard = WodSchema.safeParse(candidate);
       if (!parsedCard.success) {
-        return { ok: false, error: providerError(requestId, 'La respuesta de la IA no superó la validación.') };
+        return finish(
+          { ok: false, error: providerError(requestId, 'La respuesta de la IA no superó la validación.') },
+          response,
+        );
       }
-      return { ok: true, card: parsedCard.data };
+      return finish({ ok: true, card: parsedCard.data }, response);
     }
 
-    return { ok: false, error: providerError(requestId) };
+    return finish({ ok: false, error: providerError(requestId) }, response);
   }
 }

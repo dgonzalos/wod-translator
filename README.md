@@ -14,9 +14,9 @@ Built in phases, in this order (see `CLAUDE.md` for the full build order rationa
 - [x] **Phase 2 — Full UI on mocked data.** All review/edit screens, the interpret/edit/stale-invalidation state machine, wired to a mock interpreter.
 - [x] **Phase 3 — Real interpretation backend.** `POST /api/parse` calls Anthropic for real, validates the response against the same schema the UI trusts, and maps every failure mode (unsupported format, timeout, provider error) to a typed error the frontend already understands.
 - [x] **Phase 4 — Adaptation, copy, local save.** `POST /api/adapt` proposes equipment substitutions from a small fixed catalog (never auto-applied — each is accepted/rejected in the UI), plus copy-to-clipboard (with a manual-selection fallback) and localStorage save/restore of the last WOD, with corrupt/incompatible saves reset automatically.
-- [ ] **Phase 5 — Limits, tests, deploy.** Per-IP/global rate limiting, trusted-proxy config, the 10-case manual model evaluation, and an actual deployment. *Not started.*
+- [x] **Phase 5 — Limits, tests, deploy.** Per-IP/global rate limiting with trusted-proxy config, structured request logging, an AI-disclosure notice in the UI, an E2E test, and deploy-readiness (no live deployment — see [Deploy](#deploy)).
 
-Until Phase 5 lands, there is no rate limiting on `/api/parse` or `/api/adapt` — don't point a public deployment at either with a real API key.
+`/api/parse` and `/api/adapt` now enforce a shared per-IP hourly quota, a one-in-flight-per-IP limit, a global concurrency cap, and a global token-spend budget, all in-memory (see [Known limitations](#known-limitations-current)).
 
 ## What it does (today)
 
@@ -71,7 +71,13 @@ Copy `.env.example` and fill in `packages/api`'s variables:
 | `ANTHROPIC_API_KEY` | for real AI calls | Without it, `/api/parse` still runs but every real interpretation request fails with a `PROVIDER_ERROR` — the three built-in examples work regardless. |
 | `ANTHROPIC_MODEL` | for real AI calls | No default is hardcoded; pick a model after evaluating it against real WOD text. |
 | `REQUEST_TIMEOUT_MS` | no | Defaults to `25000`. |
-| `RATE_LIMIT_PER_IP_PER_HOUR` | not enforced yet | Reserved for Phase 5. |
+| `RATE_LIMIT_PER_IP_PER_HOUR` | no | Defaults to `5`. Shared between `/api/parse` and `/api/adapt` (one hourly quota per IP, not 5 each). |
+| `GLOBAL_MAX_CONCURRENCY` | no | Defaults to `3`. Caps AI-calling requests in flight across all clients. |
+| `GLOBAL_REQUESTS_PER_MINUTE` | no | Defaults to `20`. Caps AI-calling requests per rolling minute across all clients — independent of source IP, so no amount of IP rotation can push total throughput past this. |
+| `GLOBAL_TOKEN_BUDGET` | no | Defaults to `300000`. Input+output tokens allowed per **rolling hour** across all clients (not a lifetime total — a burst throttles for the rest of that hour, then recovers on its own); leave empty for unlimited (not recommended in production). |
+| `TRUST_PROXY_HOPS` | no | Defaults to `0` (no proxy trusted). Set to the number of proxy hops in front of this server in a real deployment, or per-IP rate limiting either merges every client into one bucket or becomes spoofable via a forged `X-Forwarded-For` header. |
+| `SERVE_WEB_DIST` | no | Defaults to unset. Set to `true` to have this server also serve `packages/web/dist` (see [Deploy](#deploy)); leave unset for local dev, where Vite's own dev server handles the frontend. |
+| `AI_STUB_MODE` | no | Defaults to unset. Set to `true` to replace the real Anthropic client with canned responses. Only used by `packages/e2e`'s test suite — **never set this in a real deployment.** |
 
 The API key never reaches the frontend bundle — it's read only in `packages/api`.
 
@@ -79,14 +85,63 @@ The API key never reaches the frontend bundle — it's read only in `packages/ap
 
 ```bash
 pnpm -r typecheck
-pnpm -r test
+pnpm -r test          # unit/component tests, excludes packages/e2e
+pnpm test:e2e          # one Playwright flow: example → edit → adapt → save → reload → copy, AI stubbed
 ```
 
-All automated tests run against a fake/injected AI client — no API key or network access needed, and no real usage is billed by CI. Real-model behavior (prompt quality, edge cases) hasn't been evaluated yet; that's part of Phase 5.
+All automated tests (including the E2E suite) run against a fake/injected or stubbed AI client — no API key or network access needed, and no real usage is billed by CI.
+
+Real-model behavior is evaluated separately and manually, since judging interpretation quality needs a human and shouldn't run on CI's or a contributor's API budget automatically:
+
+```bash
+pnpm --filter @wod-translator/api dev     # in one terminal, with a real ANTHROPIC_API_KEY/ANTHROPIC_MODEL
+pnpm --filter @wod-translator/api eval    # in another — POSTs 10 fixed cases, dumps raw results to a JSON file
+```
+
+Then review the dump by hand against `packages/api/scripts/eval/RESULTS_TEMPLATE.md` and record findings in a committed `packages/api/scripts/eval/EVAL_RESULTS.md` (not included in this repo until someone runs it — that step is left to whoever deploys with a real key).
+
+## Deploy
+
+**Readiness only — no platform is chosen and nothing is deployed as part of this repo.** The
+spec's own guidance (§10) is to serve the frontend and API under the same origin via `/api`,
+on any Node-compatible host that runs a persistent process (a purely static host can't run
+Fastify):
+
+```bash
+pnpm install --frozen-lockfile
+pnpm build                                          # builds every package, including packages/web/dist
+SERVE_WEB_DIST=true pnpm --filter @wod-translator/api start
+```
+
+Run from the repo root — `SERVE_WEB_DIST=true` makes the API process also serve
+`packages/web/dist`, relying on the monorepo being deployed as a unit (both packages built
+together, not deployed as separate services). Set the environment variables above for
+production, in particular `TRUST_PROXY_HOPS` (matched to the real platform's proxy hop count)
+and `ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL`.
+
+The in-memory rate-limit/budget counters are single-instance only: they reset on restart and
+don't coordinate across multiple instances, so they are not a durable spend limit on their
+own (spec §10). Also set a hard spend cap in the Anthropic console as defense in depth. A
+multi-instance deployment would need a shared store (e.g. Redis) for the counters — explicitly
+out of scope here.
+
+`GLOBAL_TOKEN_BUDGET` and `GLOBAL_REQUESTS_PER_MINUTE` are deliberately IP-independent — they
+cap total throughput/spend across every client combined, specifically so that rotating through
+many source IPs can't bypass `RATE_LIMIT_PER_IP_PER_HOUR` to exhaust the AI feature for
+everyone. The token budget is also a **rolling** hour, not a lifetime total, so an exhausted
+budget throttles for the rest of that hour and recovers on its own rather than needing a
+manual restart. These controls still can't distinguish one real visitor from an attacker
+running many IPs — they only bound the blast radius (a fixed request/token ceiling per window)
+and remove the "requires an operator to notice and restart" failure mode; they don't prevent a
+sufficiently determined multi-IP attacker from keeping the demo throttled for legitimate users
+while their own budget lasts.
 
 ## Known limitations (current)
 
-- No rate limiting or spend controls — do not deploy this publicly with a real key configured.
-- No deployment, screenshots, or demo exist yet.
-- Real-model accuracy is unverified; only schema-shape and error-path behavior are covered by automated tests so far.
+- Rate limiting, the global budget/throughput caps, and the trusted-proxy config are all
+  in-memory and single-instance — see [Deploy](#deploy) for what that does and doesn't protect
+  against.
+- No live deployment, screenshots, or demo exist yet — see [Deploy](#deploy) for readiness.
+- Real-model accuracy is spot-checked manually (`pnpm --filter @wod-translator/api eval`), not
+  covered by automated tests, and not a benchmark of general accuracy (spec §11).
 - The equipment-substitution catalog is a small fixed list (see `packages/shared/src/equipment-catalog.ts`), not a general equipment vocabulary.

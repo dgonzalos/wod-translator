@@ -2,9 +2,11 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { ParseRequestSchema } from '@wod-translator/shared';
 import type { InterpretationService } from '../ai/interpret.service.js';
+import type { QuotaManager } from '../rate-limit/quota.js';
+import { quotaRejectionMessage } from '../rate-limit/quota.js';
 import { ERROR_STATUS } from './error-status.js';
 
-export function registerParseRoute(app: FastifyInstance, service: InterpretationService) {
+export function registerParseRoute(app: FastifyInstance, service: InterpretationService, quota: QuotaManager) {
   app.post('/api/parse', async (request, reply) => {
     const parsedRequest = ParseRequestSchema.safeParse(request.body);
     if (!parsedRequest.success) {
@@ -16,11 +18,27 @@ export function registerParseRoute(app: FastifyInstance, service: Interpretation
       });
     }
 
-    const requestId = randomUUID();
-    const outcome = await service.interpret(parsedRequest.data.text, requestId);
-    if (outcome.ok) {
-      return reply.status(200).send({ requestId, card: outcome.card });
+    const reservation = quota.reserve(request.ip);
+    if (!reservation.ok) {
+      const requestId = randomUUID();
+      return reply.status(ERROR_STATUS.RATE_LIMITED).send({
+        code: 'RATE_LIMITED',
+        message: quotaRejectionMessage(reservation.reason),
+        requestId,
+      });
     }
-    return reply.status(ERROR_STATUS[outcome.error.code]).send(outcome.error);
+
+    const requestId = randomUUID();
+    let usage;
+    try {
+      const outcome = await service.interpret(parsedRequest.data.text, requestId, request.log);
+      usage = outcome.usage;
+      if (outcome.ok) {
+        return reply.status(200).send({ requestId, card: outcome.card });
+      }
+      return reply.status(ERROR_STATUS[outcome.error.code]).send(outcome.error);
+    } finally {
+      reservation.release(usage);
+    }
   });
 }

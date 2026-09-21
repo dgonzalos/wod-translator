@@ -8,12 +8,14 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "eval": "tsx scripts/eval/run-eval.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.126.0",
     "@fastify/cors": "^11.3.0",
     "@fastify/helmet": "^13.1.1",
+    "@fastify/static": "^10.1.4",
     "@wod-translator/shared": "workspace:*",
     "fastify": "^5.12.5",
     "zod": "^4.6.5"

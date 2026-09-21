@@ -4,15 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-Phase 1 is complete: the pnpm workspace is scaffolded with `packages/shared`, `packages/web`, and `packages/api`, the Zod data contracts live in `packages/shared`, and the three precomputed demo WODs are in `packages/shared/src/examples`. There is no real `/api/parse` or `/api/adapt` logic yet, and `packages/web` has no real UI screens yet — those land in later phases. There is no lint tooling yet.
+All 5 phases of the build order (see §12 below) are complete: the pnpm workspace (`packages/shared`, `packages/web`, `packages/api`, `packages/e2e`), real `POST /api/parse` and `POST /api/adapt` backed by the Anthropic SDK, the full review/adapt UI, copy-to-clipboard, localStorage save/restore, per-IP/global rate limiting with trusted-proxy config, structured request logging, an AI-disclosure notice, and an E2E test. What's left is not code: the 10-case manual real-model evaluation (`pnpm --filter @wod-translator/api eval`, run by hand against a real key) and an actual live deployment — see `README.md`'s Deploy section. There is no lint tooling yet.
 
 Commands (run from the repo root):
 - Install: `pnpm install`
 - Build (run before typecheck/test on a fresh clone — `packages/shared` must produce `dist/` first): `pnpm -r build`
 - Typecheck: `pnpm -r typecheck`
-- Test: `pnpm -r test`
+- Test (unit/component tests, excludes `packages/e2e`): `pnpm test`
+- E2E test (one Playwright flow against stubbed AI, no API key needed): `pnpm test:e2e`
 - Dev (all packages in parallel): `pnpm dev`
-- Single package: `pnpm --filter @wod-translator/<shared|web|api> <script>`
+- Single package: `pnpm --filter @wod-translator/<shared|web|api|e2e> <script>`
 
 Treat `WOD_Translator_MVP_Portfolio.md` as the single source of truth for scope and design decisions; the summary below is a distillation of it, not a replacement.
 

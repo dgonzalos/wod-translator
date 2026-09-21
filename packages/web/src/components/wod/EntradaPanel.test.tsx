@@ -54,4 +54,9 @@ describe('EntradaPanel', () => {
 
     expect(onSubmit).toHaveBeenCalled();
   });
+
+  it('discloses that the text is sent to an AI provider', () => {
+    renderPanel();
+    expect(screen.getByText(/se envía a un proveedor de IA/i)).toBeInTheDocument();
+  });
 });

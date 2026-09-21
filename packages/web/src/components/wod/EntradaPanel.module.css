@@ -24,3 +24,8 @@
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
 }
+
+.hint {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}

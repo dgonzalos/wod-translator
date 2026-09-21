@@ -123,4 +123,9 @@ describe('AdaptacionPanel', () => {
 
     expect(await screen.findByText('No se pudo guardar.')).toBeInTheDocument();
   });
+
+  it('discloses that adapting sends the card and equipment to an AI provider', () => {
+    render(<AdaptacionPanel {...baseProps()} />);
+    expect(screen.getByText(/Adaptar también envía la ficha/i)).toBeInTheDocument();
+  });
 });

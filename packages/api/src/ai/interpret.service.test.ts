@@ -1,14 +1,15 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { APIConnectionTimeoutError } from '@anthropic-ai/sdk';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { CURRENT_WOD_SCHEMA_VERSION } from '@wod-translator/shared';
 import { InterpretationService, type CreateMessage } from './interpret.service.js';
 import { REPORT_INTERPRETATION_TOOL, REPORT_UNSUPPORTED_FORMAT_TOOL } from './interpret-tools.js';
 
-// Only `content` is read by InterpretationService — the rest of a real
-// Anthropic.Message's required fields are irrelevant to this unit's logic.
-function fakeMessage(content: Anthropic.ContentBlock[]): Anthropic.Message {
-  return { content } as unknown as Anthropic.Message;
+// Only `content` (and, for usage/logging tests, `usage`) is read by
+// InterpretationService — the rest of a real Anthropic.Message's required
+// fields are irrelevant to this unit's logic.
+function fakeMessage(content: Anthropic.ContentBlock[], usage?: Anthropic.Usage): Anthropic.Message {
+  return { content, usage } as unknown as Anthropic.Message;
 }
 
 function toolUseBlock(name: string, input: unknown): Anthropic.ContentBlock {
@@ -102,5 +103,22 @@ describe('InterpretationService', () => {
 
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) expect(outcome.error.code).toBe('PROVIDER_ERROR');
+  });
+
+  it('reports token usage and logs a result without leaking the WOD text', async () => {
+    const usage = { input_tokens: 123, output_tokens: 45 } as unknown as Anthropic.Usage;
+    const createMessage: CreateMessage = async () =>
+      fakeMessage([toolUseBlock(REPORT_INTERPRETATION_TOOL, validInterpretationInput)], usage);
+    const logger = { info: vi.fn() };
+
+    const secretText = 'AMRAP 12min: 15 burpees, this text must never be logged';
+    const outcome = await service(createMessage).interpret(secretText, 'req-1', logger);
+
+    expect(outcome.ok).toBe(true);
+    expect(outcome.usage).toEqual({ inputTokens: 123, outputTokens: 45 });
+    expect(logger.info).toHaveBeenCalledTimes(1);
+    const [loggedObject] = logger.info.mock.calls[0]!;
+    expect((loggedObject as { result: string }).result).toBe('success');
+    expect(JSON.stringify(loggedObject)).not.toContain(secretText);
   });
 });

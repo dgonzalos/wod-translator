@@ -60,6 +60,10 @@ export function EntradaPanel({
         ))}
       </div>
 
+      <p className={styles.hint}>
+        Al interpretar, el texto se envía a un proveedor de IA (Anthropic) para procesarlo. No se usa para nada más.
+      </p>
+
       <Button onClick={onSubmit} isLoading={isSubmitting} fullWidth>
         Interpretar
       </Button>
