@@ -1,0 +1,13 @@
+[phases.setup]
+nixPkgs = ["nodejs_24"]
+
+# Installs pnpm via plain npm rather than corepack. Nixpacks' default pnpm
+# provider activates pnpm through corepack, whose bundled shim crashes on
+# this Node build with ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING (a corepack/
+# Node `vm` API incompatibility, unrelated to this repo). Pinned to the
+# same version as the root package.json's `packageManager` field.
+[phases.install]
+cmds = ["npm install --global pnpm@11.25.0", "pnpm install --frozen-lockfile"]
+
+[phases.build]
+cmds = ["pnpm build"]

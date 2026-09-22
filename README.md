@@ -121,15 +121,18 @@ and `ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL`.
 ### Railway (current deployment)
 
 One Railway service runs the whole monorepo as the single monolith process above — no Vercel,
-no split frontend/backend hosting, no database. `railway.json` at the repo root pins the build
-tooling and start command:
+no split frontend/backend hosting, no database. `railway.json` and `nixpacks.toml` at the repo
+root pin the build tooling and start command:
 
 1. Create a Railway project, "Deploy from GitHub repo", pointing at this repo.
 2. Root Directory: repo root (`/`), **not** `packages/api` — the build needs the whole
    workspace to produce both `packages/shared/dist` and `packages/web/dist`.
-3. Builder: Nixpacks (auto-detected; reads `.nvmrc` and the root `packageManager` field via
-   corepack, so no Dockerfile is needed). Build command, start command, and health-check path
-   all come from `railway.json`.
+3. Builder: Nixpacks (auto-detected). `nixpacks.toml` explicitly installs pnpm via plain `npm
+   install --global` rather than letting Nixpacks activate it through corepack — corepack's
+   bundled shim crashes on Railway's current Node build with
+   `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING` (a corepack/Node `vm` API incompatibility, unrelated
+   to this repo's code). `railway.json`'s `deploy.startCommand` runs the built API directly via
+   plain `node` for the same reason — no `pnpm`/corepack invocation at runtime either.
 4. Set these environment variables in the Railway dashboard (see `.env.example` for the full
    annotated list):
 
