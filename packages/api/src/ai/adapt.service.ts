@@ -69,6 +69,13 @@ export class AdaptationService {
       if (error instanceof APIConnectionTimeoutError) {
         return finish({ ok: false, error: timeoutError(requestId) });
       }
+      // Logged for operators only — never surfaced to the user, and never
+      // includes the card or equipment selection, only the SDK error's own
+      // name/message.
+      console.error(`AdaptationService: provider call failed (requestId=${requestId})`, {
+        name: error instanceof Error ? error.name : typeof error,
+        message: error instanceof Error ? error.message : String(error),
+      });
       return finish({ ok: false, error: providerError(requestId) });
     }
 
