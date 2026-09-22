@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# This job only checks out code and runs local builds/tests — it never
+# pushes, comments, or calls the GitHub API, so it needs no more than
+# read access to the repo contents.
+permissions:
+  contents: read
+
+# A new push to the same branch cancels the previous run rather than
+# queueing behind it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Must come BEFORE setup-node: `cache: pnpm` needs pnpm on PATH to
+      # locate the store. Version is read from the root package.json's
+      # `packageManager` field, so it is never specified twice.
+      - uses: pnpm/action-setup@v4
+
+      # Node version comes from .nvmrc — one source of truth shared with
+      # the dev machine and Railway.
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Root script builds every workspace package in dependency order —
+      # packages/shared builds before web/api automatically, since it must
+      # produce dist/ before either can resolve it. Also exactly the build
+      # Railway will run.
+      - name: Build
+        run: pnpm build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # Excludes packages/e2e by design (see the e2e job below).
+      - name: Unit tests
+        run: pnpm test
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # packages/e2e's webServer entries start the api/web dev servers
+      # directly, but both resolve @wod-translator/shared via its built
+      # dist/, so shared must be built first.
+      - name: Build
+        run: pnpm build
+
+      - name: Install Playwright browsers
+        run: pnpm --filter @wod-translator/e2e exec playwright install --with-deps chromium
+
+      # playwright.config.ts's api webServer entry already sets
+      # AI_STUB_MODE=true, so this suite never needs a real
+      # ANTHROPIC_API_KEY or makes a real provider call.
+      - name: E2E tests
+        run: pnpm test:e2e

@@ -102,10 +102,9 @@ Then review the dump by hand against `packages/api/scripts/eval/RESULTS_TEMPLATE
 
 ## Deploy
 
-**Readiness only — no platform is chosen and nothing is deployed as part of this repo.** The
-spec's own guidance (§10) is to serve the frontend and API under the same origin via `/api`,
-on any Node-compatible host that runs a persistent process (a purely static host can't run
-Fastify):
+The spec's own guidance (§10) is to serve the frontend and API under the same origin via
+`/api`, on any Node-compatible host that runs a persistent process (a purely static host can't
+run Fastify):
 
 ```bash
 pnpm install --frozen-lockfile
@@ -118,6 +117,52 @@ Run from the repo root — `SERVE_WEB_DIST=true` makes the API process also serv
 together, not deployed as separate services). Set the environment variables above for
 production, in particular `TRUST_PROXY_HOPS` (matched to the real platform's proxy hop count)
 and `ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL`.
+
+### Railway (current deployment)
+
+One Railway service runs the whole monorepo as the single monolith process above — no Vercel,
+no split frontend/backend hosting, no database. `railway.json` at the repo root pins the build
+tooling and start command:
+
+1. Create a Railway project, "Deploy from GitHub repo", pointing at this repo.
+2. Root Directory: repo root (`/`), **not** `packages/api` — the build needs the whole
+   workspace to produce both `packages/shared/dist` and `packages/web/dist`.
+3. Builder: Nixpacks (auto-detected; reads `.nvmrc` and the root `packageManager` field via
+   corepack, so no Dockerfile is needed). Build command, start command, and health-check path
+   all come from `railway.json`.
+4. Set these environment variables in the Railway dashboard (see `.env.example` for the full
+   annotated list):
+
+   | Variable | Value |
+   |---|---|
+   | `ANTHROPIC_API_KEY` | real key |
+   | `ANTHROPIC_MODEL` | real model id |
+   | `SERVE_WEB_DIST` | `true` |
+   | `TRUST_PROXY_HOPS` | start at `1`, verify against Railway's actual proxy hop count post-deploy |
+   | `RATE_LIMIT_PER_IP_PER_HOUR`, `REQUEST_TIMEOUT_MS`, `GLOBAL_MAX_CONCURRENCY`, `GLOBAL_REQUESTS_PER_MINUTE`, `GLOBAL_TOKEN_BUDGET` | optional — safe defaults already in code |
+
+   Do **not** set `PORT` (Railway injects its own) or `AI_STUB_MODE` (would silently serve fake
+   translations to real users).
+5. Confirm the health-check path is `/api/health` — a one-time deploy-gating check, not
+   continuous polling. There's no database here, so ticketing-system's "don't wake Neon"
+   caution doesn't apply, but check Railway's current idle/sleep policy for whichever plan is
+   chosen before ever pointing a continuous uptime monitor at it.
+
+CI (`.github/workflows/ci.yml`) runs build/typecheck/unit tests plus the Playwright e2e suite
+(stubbed AI, no secrets required) on every push/PR to `main`.
+
+**Pre-launch checklist:**
+
+- [ ] Run the manual 10-case real-model eval (`pnpm --filter @wod-translator/api eval` against
+  a real key) and record results in `packages/api/scripts/eval/EVAL_RESULTS.md` per
+  `RESULTS_TEMPLATE.md`.
+- [ ] Set a hard spend cap in the Anthropic console (defense in depth beyond
+  `GLOBAL_TOKEN_BUDGET`).
+- [ ] Verify `TRUST_PROXY_HOPS` against Railway's actual proxy hop count post-deploy, not just
+  assumed.
+- [ ] Confirm `AI_STUB_MODE` is absent from the Railway service's environment variables.
+- [ ] Keep the Railway service at exactly 1 replica — the in-memory rate-limit/budget counters
+  don't coordinate across instances (see below).
 
 The in-memory rate-limit/budget counters are single-instance only: they reset on restart and
 don't coordinate across multiple instances, so they are not a durable spend limit on their
