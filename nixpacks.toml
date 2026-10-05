@@ -14,3 +14,9 @@ cmds = ["npx --yes pnpm@11.25.0 install --frozen-lockfile"]
 
 [phases.build]
 cmds = ["npx --yes pnpm@11.25.0 build"]
+
+# Mirrors railway.json's deploy.startCommand so the image's own default
+# start command never falls back to Nixpacks' `pnpm start` (pnpm isn't on
+# PATH at runtime either).
+[start]
+cmd = "cd packages/api && node dist/index.js"
