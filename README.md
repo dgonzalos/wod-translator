@@ -127,12 +127,15 @@ root pin the build tooling and start command:
 1. Create a Railway project, "Deploy from GitHub repo", pointing at this repo.
 2. Root Directory: repo root (`/`), **not** `packages/api` — the build needs the whole
    workspace to produce both `packages/shared/dist` and `packages/web/dist`.
-3. Builder: Nixpacks (auto-detected). `nixpacks.toml` explicitly installs pnpm via plain `npm
-   install --global` rather than letting Nixpacks activate it through corepack — corepack's
-   bundled shim crashes on Railway's current Node build with
-   `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING` (a corepack/Node `vm` API incompatibility, unrelated
-   to this repo's code). `railway.json`'s `deploy.startCommand` runs the built API directly via
-   plain `node` for the same reason — no `pnpm`/corepack invocation at runtime either.
+3. Builder: Nixpacks (auto-detected). pnpm is never installed globally: `nixpacks.toml`'s install
+   phase and `railway.json`'s `build.buildCommand` both run it through `npx --yes pnpm@11.25.0`
+   (pinned to the root `packageManager` version). Nixpacks' default corepack activation crashes
+   on Railway's current Node build with `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING` (a corepack/Node
+   `vm` API incompatibility, unrelated to this repo's code), and `npm install --global pnpm` left
+   `pnpm` off `PATH` in later phases. `railway.json`'s `deploy.startCommand` runs the built API
+   directly via plain `node` for the same reason — no `pnpm`/corepack invocation at runtime
+   either. Leave the dashboard's Build Command empty: `railway.json` overrides it anyway, and a
+   bare `pnpm ...` command there fails with `pnpm: command not found`.
 4. Set these environment variables in the Railway dashboard (see `.env.example` for the full
    annotated list):
 
